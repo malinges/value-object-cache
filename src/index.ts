@@ -106,6 +106,17 @@ export const valueObjectCache = new (class ValueObjectCache {
     return instance;
   }
 
+  /** Look for a bare {@link Object} containing a specific set of properties in the cache. If a matching {@link Object}
+   * is found it is returned, otherwise a new {@link Object} is stored in the cache and returned. Property insertion
+   * order is ignored and doesn't affect equality comparison. Property order in returned objects might be different from
+   * property order in the provided objects. Symbol-keyed properties are completely ignored, and don't appear in the
+   * returned objects. Returned objects are frozen (readonly). */
+  getRecord<T extends Record<string | number, unknown>>(record: T): Readonly<{ [K in Extract<keyof T, string | number>]: T[K] }> {
+    // Sort props by key to make identity unaffected by prop iteration order
+    const params = Object.entries(record).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
+    return this.getInstance(Object, params.flat(), () => Object.freeze(Object.fromEntries(params) as { [K in Extract<keyof T, string | number>]: T[K] }));
+  }
+
   /** Look for an {@link Array} containing a specific list of values in the cache. If a matching {@link Array} is found
    * then it is returned, otherwise a new {@link Array} is stored in the cache and returned. Accepts any
    * {@link Iterable} of values. All returned arrays are frozen (readonly). */
