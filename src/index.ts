@@ -105,4 +105,12 @@ export const valueObjectCache = new (class ValueObjectCache {
 
     return instance;
   }
+
+  /** Look for an {@link Array} containing a specific list of values in the cache. If a matching {@link Array} is found
+   * then it is returned, otherwise a new {@link Array} is stored in the cache and returned. Accepts any
+   * {@link Iterable} of values. All returned arrays are frozen (readonly). */
+  getArray<T>(iterable: Iterable<T>): readonly T[] {
+    const array = [...iterable];
+    return this.getInstance(Array, array, () => Object.freeze(array));
+  }
 })();
