@@ -1,4 +1,48 @@
-/** A cache tree node used to store an instance {@link WeakRef} and a {@link Map} of child nodes, both optional. */
+export type Value = Primitive | ValueArray | ValueObject;
+
+export type Primitive = string | number | boolean | symbol | bigint | null | undefined;
+
+export interface ValueArray extends ReadonlyArray<Value> {}
+
+const VALUE_OBJECT_BRAND = Symbol();
+
+export abstract class ValueObject<T extends object = object> {
+  readonly [VALUE_OBJECT_BRAND] = true;
+
+  constructor(protected readonly props: Readonly<T>) {
+    Object.freeze(this.props);
+    return valueObjectCache.getObjectByValue(this.constructor, this.toValues(), () => this);
+  }
+
+  protected abstract toValues(): ValueArray;
+}
+
+export type ReadonlyValue<T extends Value> =
+  T extends readonly [infer U extends Value, ...(infer R extends readonly Value[])]
+    ? R extends [...never[]]
+      ? readonly [ReadonlyValue<U>]
+      : readonly [ReadonlyValue<U>, ...ReadonlyValue<R>]
+    : T extends readonly (infer U extends Value)[]
+      ? readonly ReadonlyValue<U>[]
+      : T;
+
+export function isPrimitive(x: unknown): x is Primitive {
+  return typeof x !== 'function' && (typeof x !== 'object' || x === null);
+}
+
+export function isValueArray(x: unknown): x is ValueArray {
+  return Array.isArray(x) && x.every(isValueInput);
+}
+
+export function isValueObject(x: unknown): x is ValueObject {
+  return x instanceof ValueObject;
+}
+
+export function isValueInput(x: unknown): x is Value {
+  return isPrimitive(x) || isValueArray(x) || isValueObject(x);
+}
+
+/** A cache tree node used to store an object {@link WeakRef} and a {@link Map} of child nodes, both optional. */
 interface CacheTreeNode {
   children: Map<unknown, CacheTreeNode> | null;
   instanceRef: WeakRef<object> | null;
@@ -8,22 +52,21 @@ interface CacheTreeNode {
  * A value object cache that can be used to make value objects behave like primitive types, i.e. if two variables `a`
  * and `b` point to an instance of the same class and have the same value, then `a === b`, otherwise `a !== b`.
  *
- * To achieve this, the cache can be queried with three arguments: a class constructor, an array of instance parameters,
- * and a factory function. Instance parameters represent the value of an instance: all calls to the cache with the same
- * constructor and instance parameters (according to the [same-value-zero equality](
+ * To achieve this, the cache can be queried with three arguments: a class constructor, an array of values, and a
+ * factory function. Values represent the "identity" of an instance: all calls to the cache with the same constructor
+ * and instance parameters (according to the [same-value-zero equality](
  * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness#same-value-zero_equality))
- * will return the same instance. If the cache already contains an instance of this class with the same value /
- * parameters, then it is returned. Otherwise, the provided factory is called to create a new instance, which is then
- * stored in the cache and returned - all the following calls to the cache with the same constructor and instance
- * parameters will now return this instance until it is garbage-collected. Because, as the cache only stores weak
- * references to the instances and their constructors, they can still be garbage-collected once they become unreachable.
+ * will return the same instance. If the cache already contains an instance of this class with the same values, then it
+ * is returned. Otherwise, the provided factory is called to create a new instance, which is then stored in the cache
+ * and returned - all the following calls to the cache with the same constructor and values will now return this
+ * instance until it is garbage-collected. Because, as the cache only stores weak references to the instances and their
+ * constructors, they can still be garbage-collected once they become unreachable.
  *
  * While value objects aren't usually expected to have the same identity when they're equal, making sure they do can
  * make life easier in situations where specifying a custom equality function isn't practical or even doable, such as
  * when using React hooks like {@link useCallback}, {@link useMemo}, {@link useEffect}, etc.
  *
- * Since this cache is meant to be used with value objects, it is highly suggested to call `Object.freeze()` on all
- * instances, and to make all of their properties immutable, `readonly`, and of course, `private` when applicable.
+ * // TODO update doc
  *
  * @see https://en.wikipedia.org/wiki/Value_object
  *
@@ -74,14 +117,11 @@ export const valueObjectCache = new (class ValueObjectCache {
     }
   });
 
-  /** Look for an instance of the provided class constructor matching the provided instance parameters. If a matching
-   * instance is found then it is returned, otherwise the factory function is called to create a new instance, which is
-   * then stored in the cache and returned - all future calls to this method made with the same constructor and instance
-   * parameters will return this instance until it is garbage-collected. */
-  getInstance<T extends object>(constructor: Function, instanceParams: readonly unknown[], instanceFactory: () => T): T {
-    const path = [constructor, ...instanceParams];
-
+  #get<T extends object>(constructor: Function, values: ValueArray, factory: () => T): T {
+    const path = [constructor, ...values];
     let node = this.#rootNode;
+    // console.log('#get()', path);
+
     for (const key of path) {
       if (!node.children) node.children = new Map();
       let childNode = node.children.get(key);
@@ -95,33 +135,81 @@ export const valueObjectCache = new (class ValueObjectCache {
     const cachedInstance = node.instanceRef?.deref();
     if (cachedInstance) return cachedInstance as T;
 
-    const instance = instanceFactory();
+    const instance = factory();
     if (instance.constructor !== constructor) {
       throw new TypeError('factory must return an instance of the provided constructor');
     }
 
+    // console.log('storing', instance, 'at path', path);
     node.instanceRef = new WeakRef(instance);
     this.#finalizationRegistry.register(instance, path);
 
     return instance;
   }
 
-  /** Look for a bare {@link Object} containing a specific set of properties in the cache. If a matching {@link Object}
-   * is found it is returned, otherwise a new {@link Object} is stored in the cache and returned. Property insertion
-   * order is ignored and doesn't affect equality comparison. Property order in returned objects might be different from
-   * property order in the provided objects. Symbol-keyed properties are completely ignored, and don't appear in the
-   * returned objects. Returned objects are frozen (readonly). */
-  getRecord<T extends Record<string | number, unknown>>(record: T): Readonly<{ [K in Extract<keyof T, string | number>]: T[K] }> {
-    // Sort props by key to make identity unaffected by prop iteration order
-    const params = Object.entries(record).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
-    return this.getInstance(Object, params.flat(), () => Object.freeze(Object.fromEntries(params) as { [K in Extract<keyof T, string | number>]: T[K] }));
+  /** Look for an instance of the provided class constructor matching the provided values. If a matching instance is
+   * found then it is returned, otherwise the factory function is called to create a new instance, which is then stored
+   * in the cache and returned - all future calls to this method made with the same constructor and values will return
+   * this instance until it is garbage-collected. */
+  getObjectByValue<const T extends object>(constructor: Function, values: ValueArray, factory: () => T): T {
+    return this.#get(
+      constructor,
+      values.map((v) => this.getByValue(v)),
+      () => Object.freeze(Object.assign(factory(), { [VALUE_OBJECT_BRAND]: true as const }))
+    );
   }
 
   /** Look for an {@link Array} containing a specific list of values in the cache. If a matching {@link Array} is found
-   * then it is returned, otherwise a new {@link Array} is stored in the cache and returned. Accepts any
-   * {@link Iterable} of values. All returned arrays are frozen (readonly). */
-  getArray<T>(iterable: Iterable<T>): readonly T[] {
-    const array = [...iterable];
-    return this.getInstance(Array, array, () => Object.freeze(array));
+   * then it is returned, otherwise a new {@link Array} is stored in the cache and returned. All returned arrays are
+   * frozen (readonly). */
+  getArrayByValue<const T extends ValueArray>(values: T): ReadonlyValue<T> {
+    const array = values.map((v) => this.getByValue(v));
+    return this.#get(Array, array, () => Object.freeze(array)) as ReadonlyValue<T>;
+  }
+
+  getByValue<const T extends Value>(value: T): ReadonlyValue<T> {
+    // getByValueStack.push(value);
+    // console.log(`[${++getByValueNum}-${getByValueStack.length}] getByValue()`, value);
+    // console.log('stack', getByValueStack);
+    try {
+      if (isPrimitive(value)) {
+        return value as ReadonlyValue<T>;
+      } else if (Array.isArray(value)) {
+        return this.getArrayByValue(value);
+      } else if (isValueObject(value)) {
+        return value as ReadonlyValue<T>;
+      } else {
+        throw new TypeError('Invalid value type: a value must be a primitive, an array, or a ValueObject.');
+      }
+    } finally {
+      // getByValueStack.pop();
+    }
   }
 })();
+
+// let getByValueNum = 0;
+// let getByValueStack: unknown[] = [];
+
+// type LengthUnit = 'mm' | 'm' | 'km';
+// export class Length extends ValueObject<{scalar: number; unit: LengthUnit}> {
+//   constructor(scalar: number, unit: LengthUnit) {
+//     super({ scalar, unit });
+//   }
+//   protected toValues(): ValueArray {
+//     return [this.props.scalar, this.props.unit];
+//   }
+// }
+
+// const getObj1 = () =>
+//   valueObjectCache.getByValue([
+//     ['a', [1, 2, ['foo', 'bar']]],
+//     ['b', [3, 4, ['baz', 'qux']]],
+//     ['c', new Length(100, 'km')],
+//   ]);
+
+// const obj11 = getObj1();
+// const obj12 = getObj1();
+
+// if (obj11 !== obj12) {
+//   throw new Error('getObj1() returned different objects');
+// }
