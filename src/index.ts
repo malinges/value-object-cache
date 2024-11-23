@@ -9,12 +9,10 @@ const VALUE_OBJECT_BRAND = Symbol();
 export abstract class ValueObject<T extends object = object> {
   readonly [VALUE_OBJECT_BRAND] = true;
 
-  constructor(protected readonly props: Readonly<T>) {
+  constructor(protected readonly props: Readonly<T>, values: ValueArray) {
     Object.freeze(this.props);
-    return valueObjectCache.getObjectByValue(this.constructor, this.toValues(), () => this);
+    return valueObjectCache.getObjectByValue(this.constructor, values, () => this);
   }
-
-  protected abstract toValues(): ValueArray;
 }
 
 export type ReadonlyValue<T extends Value> =
@@ -189,10 +187,7 @@ export const valueObjectCache = new (class ValueObjectCache {
 // type LengthUnit = 'mm' | 'm' | 'km';
 // export class Length extends ValueObject<{scalar: number; unit: LengthUnit}> {
 //   constructor(scalar: number, unit: LengthUnit) {
-//     super({ scalar, unit });
-//   }
-//   protected toValues(): ValueArray {
-//     return [this.props.scalar, this.props.unit];
+//     super({ scalar, unit }, [scalar, unit]);
 //   }
 // }
 
