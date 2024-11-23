@@ -31,14 +31,14 @@ export function isPrimitive(x: unknown): x is Primitive {
 }
 
 export function isValueArray(x: unknown): x is ValueArray {
-  return Array.isArray(x) && x.every(isValueInput);
+  return Array.isArray(x) && x.every(isValue);
 }
 
 export function isValueObject(x: unknown): x is ValueObject {
   return x instanceof ValueObject;
 }
 
-export function isValueInput(x: unknown): x is Value {
+export function isValue(x: unknown): x is Value {
   return isPrimitive(x) || isValueArray(x) || isValueObject(x);
 }
 
