@@ -152,11 +152,7 @@ export const valueObjectCache = new (class ValueObjectCache {
    * in the cache and returned - all future calls to this method made with the same constructor and values will return
    * this instance until it is garbage-collected. */
   getObjectByValue<const T extends object>(constructor: Function, values: ValueArray, factory: () => T): T {
-    return this.#get(
-      constructor,
-      values.map((v) => this.getByValue(v)),
-      () => Object.freeze(Object.assign(factory(), { [VALUE_OBJECT_BRAND]: true as const }))
-    );
+    return this.#get(constructor, values.map((v) => this.getByValue(v)), () => Object.freeze(factory()));
   }
 
   /** Look for an {@link Array} containing a specific list of values in the cache. If a matching {@link Array} is found
