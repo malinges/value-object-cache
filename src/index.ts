@@ -9,7 +9,7 @@ const VALUE_OBJECT_BRAND = Symbol();
 export abstract class ValueObject<T extends object = object> {
   readonly [VALUE_OBJECT_BRAND] = true;
 
-  constructor(protected readonly props: Readonly<T>, values: ValueArray) {
+  protected constructor(protected readonly props: Readonly<T>, values: ValueArray) {
     Object.freeze(this.props);
     return valueObjectCache.getObjectByValue(this.constructor, values, () => this);
   }
