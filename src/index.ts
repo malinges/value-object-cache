@@ -11,7 +11,7 @@ export abstract class ValueObject<T extends object = object> {
 
   protected constructor(protected readonly props: Readonly<T>, values: ValueArray) {
     Object.freeze(this.props);
-    return valueObjectCache.getObjectByValue(this.constructor, values, () => this);
+    return valueObjectCache.getObject(this.constructor, values, () => this);
   }
 }
 
@@ -149,35 +149,35 @@ export const valueObjectCache = new (class ValueObjectCache {
    * found then it is returned, otherwise the factory function is called to create a new instance, which is then stored
    * in the cache and returned - all future calls to this method made with the same constructor and values will return
    * this instance until it is garbage-collected. */
-  getObjectByValue<const T extends object>(constructor: Function, values: ValueArray, factory: () => T): T {
-    return this.#get(constructor, values.map((v) => this.getByValue(v)), () => Object.freeze(factory()));
+  getObject<const T extends object>(constructor: Function, values: ValueArray, factory: () => T): T {
+    return this.#get(constructor, values.map((v) => this.getValue(v)), () => Object.freeze(factory()));
   }
 
   /** Look for an {@link Array} containing a specific list of values in the cache. If a matching {@link Array} is found
    * then it is returned, otherwise a new {@link Array} is stored in the cache and returned. All returned arrays are
    * frozen (readonly). */
-  getArrayByValue<const T extends ValueArray>(values: T): ReadonlyValue<T> {
-    const array = values.map((v) => this.getByValue(v));
+  getArray<const T extends ValueArray>(values: T): ReadonlyValue<T> {
+    const array = values.map((v) => this.getValue(v));
     return this.#get(Array, array, () => Object.freeze(array)) as ReadonlyValue<T>;
   }
 
-  getByValue<const T extends Value>(value: T): ReadonlyValue<T> {
+  getValue<const T extends Value>(value: T): ReadonlyValue<T> {
     // getByValueStack.push(value);
     // console.log(`[${++getByValueNum}-${getByValueStack.length}] getByValue()`, value);
     // console.log('stack', getByValueStack);
-    try {
-      if (isPrimitive(value)) {
-        return value as ReadonlyValue<T>;
-      } else if (Array.isArray(value)) {
-        return this.getArrayByValue(value);
-      } else if (isValueObject(value)) {
-        return value as ReadonlyValue<T>;
-      } else {
-        throw new TypeError('Invalid value type: a value must be a primitive, an array, or a ValueObject.');
-      }
-    } finally {
-      // getByValueStack.pop();
+    // try {
+    if (isPrimitive(value)) {
+      return value as ReadonlyValue<T>;
+    } else if (Array.isArray(value)) {
+      return this.getArray(value);
+    } else if (isValueObject(value)) {
+      return value as ReadonlyValue<T>;
+    } else {
+      throw new TypeError('Invalid value type: a value must be a primitive, an array, or a ValueObject.');
     }
+    // } finally {
+    //   getByValueStack.pop();
+    // }
   }
 })();
 
@@ -191,16 +191,16 @@ export const valueObjectCache = new (class ValueObjectCache {
 //   }
 // }
 
-// const getObj1 = () =>
-//   valueObjectCache.getByValue([
+// const getObj = () =>
+//   valueObjectCache.getValue([
 //     ['a', [1, 2, ['foo', 'bar']]],
 //     ['b', [3, 4, ['baz', 'qux']]],
 //     ['c', new Length(100, 'km')],
 //   ]);
 
-// const obj11 = getObj1();
-// const obj12 = getObj1();
+// const obj1 = getObj();
+// const obj2 = getObj();
 
-// if (obj11 !== obj12) {
+// if (obj1 !== obj2) {
 //   throw new Error('getObj1() returned different objects');
 // }
