@@ -158,7 +158,7 @@ export const valueObjectCache = new (class ValueObjectCache {
    * frozen (readonly). */
   getArray<const T extends ValueArray>(values: T): ReadonlyValue<T> {
     const array = values.map((v) => this.getValue(v));
-    return this.#get(Array, array, () => Object.freeze(array)) as ReadonlyValue<T>;
+    return this.#get(array.constructor, array, () => Object.freeze(array)) as ReadonlyValue<T>;
   }
 
   getValue<const T extends Value>(value: T): ReadonlyValue<T> {
