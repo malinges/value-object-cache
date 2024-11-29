@@ -4,10 +4,10 @@ export type Primitive = string | number | boolean | symbol | bigint | null | und
 
 export interface ValueArray extends ReadonlyArray<Value> {}
 
-const VALUE_OBJECT_BRAND = Symbol();
+declare const VALUE_OBJECT_BRAND: unique symbol;
 
 export abstract class ValueObject<T extends object = object> {
-  readonly [VALUE_OBJECT_BRAND] = true;
+  declare private readonly [VALUE_OBJECT_BRAND]: undefined;
 
   protected constructor(protected readonly props: Readonly<T>, values: ValueArray) {
     Object.freeze(this.props);
